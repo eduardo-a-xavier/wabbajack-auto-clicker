@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Imagens locais do usuário
+imgs/*.png
+!imgs/.gitkeep
+
+# IDEs
+.vscode/
+.idea/
