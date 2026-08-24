@@ -1,53 +1,49 @@
-"""
+r"""
 ================================================================================
-  AUTOMAÇÃO WABBAJACK - FrostDays 1.5
-  Script para automação do instalador de modlists Wabbajack no modo gratuito
-  (sem conta Nexus Premium), clicando automaticamente em "Slow Download".
+  AUTOMAÇÃO WABBAJACK — Modo Gratuito (sem conta Nexus Premium)
+  Clica automaticamente em "Slow Download" para qualquer modlist Wabbajack.
+
+  USO RÁPIDO:
+    python instal.py                                       # usa o caminho padrão
+    python instal.py --modlist "D:\MinhaLista.wabbajack"
+    python instal.py --all-steps                           # automatiza etapas 1-4
+    python instal.py --help                                # mostra todas as opções
 
   DEPENDÊNCIAS:
     pip install pyautogui opencv-python Pillow pygetwindow
 
-  IMAGENS NECESSÁRIAS (leia as instruções abaixo):
-    imgs/btn_install_from_disk.png
-    imgs/btn_open.png
-    imgs/btn_install.png
-    imgs/btn_slow_download.png
-    imgs/btn_manual_download.png   (fallback para "Slow Download")
+  IMAGENS NECESSÁRIAS (pasta imgs/ ao lado deste script):
+    imgs/btn_slow_download.png     ← obrigatória
+    imgs/btn_standard_download.png ← opcional (fallback)
+    imgs/btn_manual_download.png   ← opcional (fallback)
+    imgs/btn_install_from_disk.png ← só com --all-steps
+    imgs/btn_open.png              ← só com --all-steps
+    imgs/btn_install.png           ← só com --all-steps
 
-  INSTRUÇÕES PARA CAPTURA DAS IMAGENS:
-    Crie uma pasta chamada "imgs" dentro da pasta deste script.
-    Tire os prints das REGIÕES EXATAS dos botões conforme abaixo:
+  CAPTURA DAS IMAGENS:
+    Use WIN+SHIFT+S (Recorte do Windows) para tirar print da região exata
+    de cada botão conforme as instruções abaixo:
 
     1. btn_install_from_disk.png
-       → Abra o Wabbajack na tela de "Browse Lists"
-       → Tire print (WIN+SHIFT+S) apenas do botão "Install from disk" 
-         (canto superior direito, texto amarelo)
-
+       → Wabbajack na tela "Browse Lists" → botão "Install from disk"
     2. btn_open.png
-       → Abra qualquer janela de diálogo de arquivo do Windows
-       → Tire print apenas do botão "Abrir" / "Open"
-
+       → Qualquer janela de diálogo do Windows → botão "Abrir" / "Open"
     3. btn_install.png
-       → Após carregar o modlist no Wabbajack, tire print do botão 
-         "Install" (canto inferior direito da tela do Wabbajack)
+       → Wabbajack após carregar o modlist → botão "Install" (canto inferior)
+    4. btn_slow_download.png  ← MAIS IMPORTANTE
+       → Nexus Mods pedindo download manual → botão "Slow Download" (cinza/verde)
+    5. btn_standard_download.png / btn_manual_download.png (opcionais)
+       → Mesma tela, variações de resolução/zoom — aumentam robustez
 
-    4. btn_slow_download.png
-       → Quando o Nexus Mods abrir pedindo download manual, tire print 
-         do botão "Slow Download" (botão cinza/verde grande na página)
-       → DICA: faça um download manual na mão primeiro, salve o print 
-         desse botão ANTES de rodar o script.
-
-    5. btn_manual_download.png  (opcional, fallback)
-       → Mesmo botão que slow_download, mas de outra resolução/zoom.
-
-  ATENÇÃO DE SEGURANÇA:
-    - Mova o mouse para o CANTO SUPERIOR ESQUERDO da tela para abortar 
-      o script a qualquer momento (pyautogui.FAILSAFE = True).
-    - O script NÃO armazena nem transmite nenhuma credencial.
+  SEGURANÇA:
+    Mova o mouse para o CANTO SUPERIOR ESQUERDO para abortar imediatamente.
+    O script NÃO armazena nem transmite credenciais.
 ================================================================================
 """
 
+import argparse
 import os
+import subprocess
 import sys
 import time
 import logging
@@ -55,36 +51,29 @@ import pyautogui
 import pygetwindow as gw
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CONFIGURAÇÕES GLOBAIS
+#  CONFIGURAÇÕES PADRÃO (substituíveis via argumentos de linha de comando)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Segurança: mover o mouse para o canto superior esquerdo aborta o script
 pyautogui.FAILSAFE = True
 
-# Pasta base deste script
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+IMGS_DIR  = os.path.join(BASE_DIR, "imgs")
 
-# Pasta com as imagens de referência dos botões
-IMGS_DIR = os.path.join(BASE_DIR, "imgs")
+MODLIST_PATH             = r"D:\FrostDays 1.5.wabbajack"
+CONFIANCA                = 0.80
+TIMEOUT_BOTAO            = 60
+INTERVALO_LOOP           = 2
+ESPERA_APOS_DOWNLOAD     = 5
+MAX_TENTATIVAS_SEM_BOTAO = 150   # ~5 min sem achar botão → encerra
 
-# Caminho completo do arquivo .wabbajack do modlist
-MODLIST_PATH = r"D:\FrostDays 1.5.wabbajack"
-
-# Confiança mínima para o reconhecimento de imagem (0.0 a 1.0)
-# Reduza para 0.7 se o script não encontrar os botões
-CONFIANCA = 0.80
-
-# Tempo (segundos) de espera máximo para um botão aparecer na tela
-TIMEOUT_BOTAO = 60
-
-# Tempo (segundos) entre cada verificação no loop de downloads
-INTERVALO_LOOP = 2
-
-# Tempo de espera após clicar em Slow Download (para a aba fechar)
-ESPERA_APOS_DOWNLOAD = 5
+IMAGENS_DOWNLOAD = [
+    "btn_standard_download.png",
+    "btn_slow_download.png",
+    "btn_manual_download.png",
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CONFIGURAÇÃO DE LOG
+#  LOG
 # ─────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -108,13 +97,11 @@ def img(nome_arquivo: str) -> str:
 
 
 def verificar_imagens():
-    """Verifica se todas as imagens de referência obrigatórias existem."""
-    obrigatorias = [
-        "btn_slow_download.png",
-    ]
+    """Verifica se a imagem obrigatória existe; encerra com código 1 se faltar."""
+    obrigatorias = ["btn_slow_download.png"]
     faltando = [f for f in obrigatorias if not os.path.exists(img(f))]
     if faltando:
-        log.error("As seguintes imagens de referência estão FALTANDO na pasta 'imgs':")
+        log.error("Imagens de referência FALTANDO na pasta 'imgs':")
         for f in faltando:
             log.error(f"  → {f}")
         log.error("Leia as instruções no topo do script para saber como capturá-las.")
@@ -122,13 +109,18 @@ def verificar_imagens():
     log.info("✔ Todas as imagens de referência encontradas.")
 
 
-def aguardar_botao(nome_img: str, timeout: int = TIMEOUT_BOTAO, confianca: float = CONFIANCA):
+def aguardar_botao(nome_img: str, timeout: int = None, confianca: float = None):
     """
     Aguarda um botão aparecer na tela por até `timeout` segundos.
     Retorna a localização (Box) ou None se não encontrado.
     """
+    if timeout is None:
+        timeout = TIMEOUT_BOTAO
+    if confianca is None:
+        confianca = CONFIANCA
+
     caminho = img(nome_img)
-    inicio = time.time()
+    inicio  = time.time()
     log.info(f"Aguardando botão: {nome_img} (timeout={timeout}s) ...")
 
     while time.time() - inicio < timeout:
@@ -157,7 +149,7 @@ def clicar_centro(localizacao):
 
 
 def focar_janela(titulo_parcial: str) -> bool:
-    """Tenta trazer ao foco uma janela com título parcial informado."""
+    """Traz ao foco a primeira janela cujo título contenha `titulo_parcial`."""
     try:
         janelas = gw.getWindowsWithTitle(titulo_parcial)
         if janelas:
@@ -172,7 +164,7 @@ def focar_janela(titulo_parcial: str) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  ETAPA 1 — Clicar em "Install from disk" no Wabbajack
+#  ETAPAS
 # ─────────────────────────────────────────────────────────────────────────────
 
 def etapa1_install_from_disk():
@@ -180,27 +172,21 @@ def etapa1_install_from_disk():
     log.info("ETAPA 1: Clicando em 'Install from disk'")
     log.info("=" * 60)
 
-    # Tenta focar a janela do Wabbajack
     if not focar_janela("Wabbajack"):
-        log.warning("Janela do Wabbajack não encontrada pelo título. Continuando mesmo assim...")
+        log.warning("Janela do Wabbajack não encontrada. Continuando mesmo assim...")
 
     time.sleep(1)
-
     localizacao = aguardar_botao("btn_install_from_disk.png", timeout=30)
     if not localizacao:
         raise RuntimeError(
             "Botão 'Install from disk' não encontrado. "
-            "Verifique se o Wabbajack está aberto e na tela correta."
+            "Verifique se o Wabbajack está aberto na tela correta."
         )
 
     clicar_centro(localizacao)
     log.info("  → 'Install from disk' clicado. Aguardando janela de arquivo...")
     time.sleep(2)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  ETAPA 2 — Selecionar o arquivo .wabbajack na janela de diálogo
-# ─────────────────────────────────────────────────────────────────────────────
 
 def etapa2_selecionar_modlist():
     log.info("=" * 60)
@@ -210,53 +196,42 @@ def etapa2_selecionar_modlist():
 
     time.sleep(1.5)
 
-    # Digita o caminho completo do arquivo na barra de endereço da janela
-    # usando o atalho que funciona em qualquer janela de diálogo do Windows
     try:
-        # Ativa o campo "Nome do arquivo" com Alt+N ou digita diretamente
-        pyautogui.hotkey("alt", "n")  # Foca o campo Nome
+        pyautogui.hotkey("alt", "n")
         time.sleep(0.5)
-        pyautogui.hotkey("ctrl", "a")  # Seleciona tudo
+        pyautogui.hotkey("ctrl", "a")
         time.sleep(0.2)
         pyautogui.typewrite(MODLIST_PATH, interval=0.04)
         time.sleep(0.5)
         log.info(f"  → Caminho digitado: {MODLIST_PATH}")
     except Exception as e:
-        log.warning(f"  ⚠ Erro ao digitar caminho com typewrite: {e}")
+        log.warning(f"  ⚠ Erro ao digitar caminho: {e}")
         log.info("  → Tentando via clipboard...")
-        import subprocess
-        subprocess.run(
-            f'echo {MODLIST_PATH}| clip',
-            shell=True
-        )
+        # Sem shell=True para evitar injeção de comandos
+        subprocess.run(["clip"], input=MODLIST_PATH.encode("utf-8"), check=False)
         pyautogui.hotkey("ctrl", "v")
         time.sleep(0.5)
 
-    # Clica no botão "Abrir" / "Open"
     localizacao = aguardar_botao("btn_open.png", timeout=15)
     if localizacao:
         clicar_centro(localizacao)
     else:
-        log.warning("  ⚠ Botão 'Abrir' não encontrado pela imagem. Tentando via ENTER...")
+        log.warning("  ⚠ Botão 'Abrir' não encontrado. Tentando via ENTER...")
         pyautogui.press("enter")
 
     log.info("  → Arquivo selecionado. Aguardando Wabbajack carregar o modlist (15s)...")
-    time.sleep(15)  # Wabbajack leva ~10-15s para mapear
+    time.sleep(15)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  ETAPA 3 — Clicar no botão "Install"
-# ─────────────────────────────────────────────────────────────────────────────
 
 def etapa3_iniciar_instalacao():
     log.info("=" * 60)
     log.info("ETAPA 3: Iniciando a instalação")
     log.info("=" * 60)
 
-    # Volta o foco para o Wabbajack
-    focar_janela("Wabbajack")
-    time.sleep(1)
+    if not focar_janela("Wabbajack"):
+        log.warning("  ⚠ Janela do Wabbajack não encontrada. Continuando mesmo assim...")
 
+    time.sleep(1)
     localizacao = aguardar_botao("btn_install.png", timeout=30)
     if not localizacao:
         raise RuntimeError(
@@ -269,47 +244,34 @@ def etapa3_iniciar_instalacao():
     time.sleep(3)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  ETAPA 4 — Loop: clicar em "Slow Download" repetidamente
-# ─────────────────────────────────────────────────────────────────────────────
-
 def etapa4_loop_slow_download():
     log.info("=" * 60)
     log.info("ETAPA 4: Loop automático de 'Slow Download'")
     log.info("  (Mova o mouse para o canto superior ESQUERDO para abortar)")
     log.info("=" * 60)
 
-    # Nomes das imagens a tentar (fallback entre elas)
-    imagens_download = [
-        "btn_standard_download.png",
-        "btn_slow_download.png",
-        "btn_manual_download.png",
-    ]
-
-    clicks_realizados = 0
+    clicks_realizados    = 0
     tentativas_sem_botao = 0
-    MAX_TENTATIVAS_SEM_BOTAO = 150  # ~5 minutos sem achar (esperando downloads grandes)
 
     while tentativas_sem_botao < MAX_TENTATIVAS_SEM_BOTAO:
         botao_encontrado = False
 
-        for nome_img in imagens_download:
+        for nome_img in IMAGENS_DOWNLOAD:
             caminho = img(nome_img)
             if not os.path.exists(caminho):
-                continue  # Pula imagens que não existem (ex: fallback opcional)
+                continue
 
             try:
                 localizacao = pyautogui.locateOnScreen(caminho, confidence=CONFIANCA)
                 if localizacao:
-                    log.info(f"  🟢 Download #{clicks_realizados + 1} — Botão encontrado: {nome_img}")
+                    log.info(f"  🟢 Download #{clicks_realizados + 1} — Botão: {nome_img}")
                     clicar_centro(localizacao)
-                    clicks_realizados += 1
-                    tentativas_sem_botao = 0  # Reset do contador de espera
-                    botao_encontrado = True
-
-                    log.info(f"  ⏳ Aguardando {ESPERA_APOS_DOWNLOAD}s para o download iniciar...")
+                    clicks_realizados    += 1
+                    tentativas_sem_botao  = 0
+                    botao_encontrado      = True
+                    log.info(f"  ⏳ Aguardando {ESPERA_APOS_DOWNLOAD}s...")
                     time.sleep(ESPERA_APOS_DOWNLOAD)
-                    break  # Sai do for e volta para o while
+                    break
 
             except pyautogui.ImageNotFoundException:
                 pass
@@ -322,41 +284,122 @@ def etapa4_loop_slow_download():
         if not botao_encontrado:
             tentativas_sem_botao += 1
             log.info(
-                f"  ⏸ Botão de download não encontrado "
+                f"  ⏸ Botão não encontrado "
                 f"({tentativas_sem_botao}/{MAX_TENTATIVAS_SEM_BOTAO}). "
-                f"Rolando a tela e aguardando {INTERVALO_LOOP}s..."
+                f"Rolando e aguardando {INTERVALO_LOOP}s..."
             )
-            pyautogui.scroll(-500)  # Rola a tela para baixo
+            pyautogui.scroll(-500)
             time.sleep(INTERVALO_LOOP)
 
     log.info("=" * 60)
-    log.info(f"✅ Loop encerrado. Total de downloads clicados: {clicks_realizados}")
-    log.info(
-        "   Se ainda houver mods pendentes, o Wabbajack pode ter pausado ou "
-        "todos os downloads foram concluídos."
-    )
+    log.info(f"✅ Loop encerrado. Total de cliques: {clicks_realizados}")
     log.info("=" * 60)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  PONTO DE ENTRADA PRINCIPAL
+#  CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main():
-    log.info("╔══════════════════════════════════════════════════════════╗")
-    log.info("║   AUTOMAÇÃO WABBAJACK — FrostDays 1.5                   ║")
-    log.info("║   Iniciando em 5 segundos... (Alt+F4 para cancelar)     ║")
-    log.info("╚══════════════════════════════════════════════════════════╝")
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Automação Wabbajack — clica em Slow Download automaticamente",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exemplos:\n"
+            "  python instal.py\n"
+            "  python instal.py --modlist \"D:\\MinhaLista.wabbajack\"\n"
+            "  python instal.py --all-steps --confidence 0.75\n"
+            "  python instal.py --imgs-dir C:\\meus-prints\n"
+        ),
+    )
+    parser.add_argument(
+        "--modlist", "-m",
+        default=MODLIST_PATH,
+        metavar="CAMINHO",
+        help=f"Arquivo .wabbajack a instalar (padrão: {MODLIST_PATH})",
+    )
+    parser.add_argument(
+        "--confidence", "-c",
+        type=float, default=CONFIANCA,
+        metavar="0.0-1.0",
+        help=f"Confiança mínima para reconhecimento de imagem (padrão: {CONFIANCA})",
+    )
+    parser.add_argument(
+        "--timeout", "-t",
+        type=int, default=TIMEOUT_BOTAO,
+        metavar="SEGS",
+        help=f"Espera máxima por botão em segundos (padrão: {TIMEOUT_BOTAO})",
+    )
+    parser.add_argument(
+        "--interval", "-i",
+        type=float, default=INTERVALO_LOOP,
+        metavar="SEGS",
+        help=f"Intervalo entre verificações no loop (padrão: {INTERVALO_LOOP})",
+    )
+    parser.add_argument(
+        "--wait", "-w",
+        type=float, default=ESPERA_APOS_DOWNLOAD,
+        metavar="SEGS",
+        help=f"Espera após clicar no botão (padrão: {ESPERA_APOS_DOWNLOAD})",
+    )
+    parser.add_argument(
+        "--max-attempts", "-a",
+        type=int, default=MAX_TENTATIVAS_SEM_BOTAO,
+        metavar="N",
+        help=f"Tentativas sem botão antes de encerrar (padrão: {MAX_TENTATIVAS_SEM_BOTAO} ≈ 5 min)",
+    )
+    parser.add_argument(
+        "--imgs-dir",
+        default=None,
+        metavar="PASTA",
+        help="Pasta com as imagens de referência (padrão: imgs/ ao lado do script)",
+    )
+    parser.add_argument(
+        "--all-steps",
+        action="store_true",
+        help="Executar todas as etapas 1-4 (inclui seleção automática do modlist)",
+    )
+    return parser.parse_args(argv)
 
-    # Verifica imagens antes de começar
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PONTO DE ENTRADA
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main(argv=None):
+    global MODLIST_PATH, CONFIANCA, TIMEOUT_BOTAO, INTERVALO_LOOP
+    global ESPERA_APOS_DOWNLOAD, MAX_TENTATIVAS_SEM_BOTAO, IMGS_DIR
+
+    args = parse_args(argv)
+    MODLIST_PATH             = args.modlist
+    CONFIANCA                = args.confidence
+    TIMEOUT_BOTAO            = args.timeout
+    INTERVALO_LOOP           = args.interval
+    ESPERA_APOS_DOWNLOAD     = args.wait
+    MAX_TENTATIVAS_SEM_BOTAO = args.max_attempts
+    if args.imgs_dir:
+        IMGS_DIR = args.imgs_dir
+
+    log.info("╔══════════════════════════════════════════════════════════╗")
+    log.info("║   AUTOMAÇÃO WABBAJACK — Modo Gratuito                   ║")
+    log.info("║   Iniciando em 5 segundos... (Ctrl+C para cancelar)     ║")
+    log.info("╚══════════════════════════════════════════════════════════╝")
+    log.info(f"  Modlist  : {MODLIST_PATH}")
+    log.info(f"  Imagens  : {IMGS_DIR}")
+    log.info(f"  Confiança: {CONFIANCA}  |  Timeout: {TIMEOUT_BOTAO}s")
+
     verificar_imagens()
 
-    # Pausa para o usuário posicionar as janelas
     for i in range(5, 0, -1):
         log.info(f"  Iniciando em {i}s...")
         time.sleep(1)
 
     try:
+        if args.all_steps:
+            etapa1_install_from_disk()
+            etapa2_selecionar_modlist()
+            etapa3_iniciar_instalacao()
+
         etapa4_loop_slow_download()
 
     except pyautogui.FailSafeException:
@@ -367,7 +410,7 @@ def main():
 
     except Exception as e:
         log.error(f"\n❌ Erro inesperado: {e}", exc_info=True)
-        log.error("Verifique o arquivo 'wabbajack_auto.log' para detalhes.")
+        log.error("Verifique 'wabbajack_auto.log' para detalhes.")
 
     finally:
         log.info("Script finalizado.")
