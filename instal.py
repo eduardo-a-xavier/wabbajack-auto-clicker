@@ -65,6 +65,7 @@ TIMEOUT_BOTAO            = 60
 INTERVALO_LOOP           = 2
 ESPERA_APOS_DOWNLOAD     = 5
 MAX_TENTATIVAS_SEM_BOTAO = 150   # ~5 min sem achar botão → encerra
+STOP_REQUESTED           = False  # GUI seta True para parar o loop
 
 IMAGENS_DOWNLOAD = [
     "btn_standard_download.png",
@@ -250,10 +251,16 @@ def etapa4_loop_slow_download():
     log.info("  (Mova o mouse para o canto superior ESQUERDO para abortar)")
     log.info("=" * 60)
 
+    global STOP_REQUESTED
     clicks_realizados    = 0
     tentativas_sem_botao = 0
 
     while tentativas_sem_botao < MAX_TENTATIVAS_SEM_BOTAO:
+        if STOP_REQUESTED:
+            STOP_REQUESTED = False
+            log.info("  🛑 Parada solicitada pelo usuário.")
+            return
+
         botao_encontrado = False
 
         for nome_img in IMAGENS_DOWNLOAD:
