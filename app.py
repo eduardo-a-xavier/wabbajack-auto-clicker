@@ -197,9 +197,89 @@ class WabbajackApp(tk.Tk):
         nb = ttk.Notebook(self)
         nb.pack(fill='both', expand=True, padx=10, pady=10)
         self._nb = nb
+        self._build_tab_guide(nb)
         self._build_tab_setup(nb)
         self._build_tab_settings(nb)
         self._build_tab_run(nb)
+
+    # ─── Aba 0: Como Usar ────────────────────────────────────────────────────
+
+    def _build_tab_guide(self, nb):
+        f = ttk.Frame(nb, padding=16)
+        nb.add(f, text="  ★ Como Usar  ")
+
+        canvas = tk.Canvas(f, bd=0, highlightthickness=0)
+        vsb = ttk.Scrollbar(f, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side='left', fill='both', expand=True)
+        vsb.pack(side='right', fill='y')
+
+        inner = ttk.Frame(canvas, padding=(4, 0, 20, 16))
+        win_id = canvas.create_window((0, 0), window=inner, anchor='nw')
+
+        def _resize(event):
+            canvas.configure(scrollregion=canvas.bbox('all'))
+            canvas.itemconfigure(win_id, width=event.width)
+
+        inner.bind('<Configure>', _resize)
+        canvas.bind('<Configure>', _resize)
+
+        steps = [
+            ("1. Instale o Wabbajack",
+             "Baixe o Wabbajack em wabbajack.org e execute-o ao menos uma vez para que ele se configure automaticamente."),
+            ("2. Escolha e baixe um Modlist",
+             "No Wabbajack, navegue pela galeria de modlists (Skyrim, Fallout 4, etc.).\n"
+             "Clique em um modlist → 'Download and Install'.\n"
+             "O Wabbajack vai baixar o arquivo .wabbajack para sua máquina."),
+            ("3. Configure o caminho do Modlist (Aba 1)",
+             "Na aba '1. Configuração', clique em 'Procurar...' e selecione o arquivo\n"
+             ".wabbajack que o Wabbajack baixou (geralmente em Documentos\\Wabbajack)."),
+            ("4. Capture as imagens dos botões (Aba 1)",
+             "Cada linha representa um botão da tela do Wabbajack ou do Nexus Mods.\n\n"
+             "OBRIGATÓRIO:\n"
+             "  • Slow Download — botão cinza/verde no Nexus Mods (usuários gratuitos)\n\n"
+             "Opcionais (se quiser automatizar etapas 1–3 também):\n"
+             "  • Install from disk, Open, Install — botões dentro do Wabbajack\n\n"
+             "Para capturar:\n"
+             "  a) Clique em 'Capturar' na linha desejada\n"
+             "  b) Clique em 'Pronto →' na janela de instrução\n"
+             "  c) Vá até a janela do Nexus/Wabbajack com o botão visível\n"
+             "  d) Clique e arraste para delimitar o botão — ESC cancela"),
+            ("5. Ajuste as configurações (Aba 2)  —  opcional",
+             "Confiança: valores menores (ex. 0.60) aceitam variações visuais do botão.\n"
+             "Reduza se o automação não estiver encontrando os botões.\n\n"
+             "Timeout: segundos que o app aguarda cada botão aparecer.\n"
+             "Tentativas máximas: após esse número de loops sem botão, o app para.\n"
+             "Espera após Slow Download: dá tempo do download começar antes de procurar o próximo."),
+            ("6. Inicie a automação (Aba 3)",
+             "Clique em '▶ Iniciar'.\n"
+             "O app vai monitorar a tela e clicar automaticamente em 'Slow Download'\n"
+             "(e nos outros botões configurados) toda vez que eles aparecerem.\n\n"
+             "Para parar a qualquer momento, clique em '⏹ Parar'.\n"
+             "O log mostra em tempo real o que está acontecendo."),
+            ("7. Deixe rodar!",
+             "A automação cuida dos cliques enquanto você faz outra coisa.\n"
+             "Quando todos os arquivos terminarem de baixar, o Wabbajack vai\n"
+             "instalar a modlist automaticamente na pasta de destino configurada."),
+        ]
+
+        ttk.Label(inner, text="Guia Rápido — Baixar um Modlist com Automação",
+                  font=('Segoe UI', 12, 'bold')).pack(anchor='w', pady=(8, 16))
+
+        for title, body in steps:
+            hdr = ttk.Frame(inner)
+            hdr.pack(fill='x', pady=(10, 2))
+            ttk.Label(hdr, text=title, font=('Segoe UI', 10, 'bold'),
+                      foreground='#1a5fa8').pack(anchor='w')
+            ttk.Separator(hdr, orient='horizontal').pack(fill='x', pady=(4, 0))
+            ttk.Label(inner, text=body, justify='left',
+                      wraplength=700).pack(anchor='w', padx=(16, 0), pady=(4, 0))
+
+        ttk.Label(
+            inner,
+            text="\n⚠  Mantenha a janela do Wabbajack / Nexus Mods visível na tela durante a automação.",
+            foreground='#a05000', justify='left', wraplength=700,
+        ).pack(anchor='w', pady=(20, 0))
 
     # ─── Aba 1: Configuração ─────────────────────────────────────────────────
 
